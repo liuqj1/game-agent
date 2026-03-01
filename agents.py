@@ -1,9 +1,10 @@
+import json
 import os
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from prompts import STORY_PROMPT, SCRIPT_PROMPT
+from prompts import STORY_PROMPT, SCRIPT_PROMPT, JS_GENERATE_PROMPT
 
 load_dotenv()
 
@@ -25,8 +26,12 @@ def story_agent(state):
     result = chain.invoke({
         "requirement": state["requirement"]
     })
-
-    return {"stories": result.content}
+    # 解析 JSON
+    parsed = json.loads(result.content)
+    # print(parsed)
+    return {
+        "stories": parsed["stories"]
+    }
 
 
 def script_agent(state):
@@ -37,3 +42,22 @@ def script_agent(state):
     })
 
     return {"script": result.content}
+
+
+def js_agent(state):
+    prompt = ChatPromptTemplate.from_template(JS_GENERATE_PROMPT)
+
+    chain = prompt | llm
+
+    result = chain.invoke({
+        "script": state["script"]
+    })
+
+    # 清理可能的 ``` 包裹
+    content = result.content.strip()
+    content = content.replace("```javascript", "")
+    content = content.replace("```", "").strip()
+
+    return {
+        "story_js": content
+    }
