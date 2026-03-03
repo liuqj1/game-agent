@@ -21,32 +21,52 @@ class GameState(TypedDict, total=False):
 # 用户选择节点
 # ===============================
 
+def get_thread_id(config):
+    return config.get("configurable", {}).get("thread_id")
 
-def user_select_node(state: GameState):
+
+def user_select_node(state: GameState, config):
+    # # 从 config 里取 thread_id
+    # thread_id = get_thread_id(config)
+
     # 第一次执行时没有 user_choice → 中断
     if "user_choice" not in state:
         return interrupt({
             "stories": state["stories"],
-            "message": "请选择版本 1 / 2 / 3"
+            "message": "请选择版本 1 / 2 / 3，或者点击重新生成。",
+            # "thread_id": thread_id
         })
 
-    # resume 后带着 user_choice
-    choice = int(state["user_choice"])
+    choice = state["user_choice"]
 
-    # 从 stories 中找对应版本
+    # =========================
+    # 1️⃣ 用户选择重新生成
+    # =========================
+    if choice == "重新生成":
+        return {
+            # 清除旧选择
+            "user_choice": None,
+            # 跳回 story_agent
+            "__goto__": "story_agent"
+        }
+
+    # =========================
+    # 2️⃣ 用户选择 1 / 2 / 3
+    # =========================
+    version = int(choice)
+
     selected = next(
-        (s for s in state["stories"] if s["version"] == choice),
+        (s for s in state["stories"] if s["version"] == version),
         None
     )
 
-    # 如果没找到，默认选第一个
+    # 理论上一定存在（因为前端限制了）
     if not selected:
         selected = state["stories"][0]
 
     return {
         "selected_story": selected
     }
-
 
 # ===============================
 # 保存文件节点
