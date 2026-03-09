@@ -38,10 +38,16 @@ def generate(data: StartRequest):
     # print(data)
     thread_id = str(uuid.uuid4())
 
-
     result = graph.invoke(
-        {"requirement": data.requirement},
-        config={"configurable": {"thread_id": thread_id}}
+        {
+            "thread_id": thread_id,  # 👈 放入 state
+            "requirement": data.requirement
+        },
+        config={
+            "configurable": {
+                "thread_id": thread_id
+            }
+        }
     )
     print(result)
     print(type(result))
