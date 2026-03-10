@@ -1,6 +1,7 @@
-import uvicorn
+﻿import uvicorn
 from fastapi import FastAPI
-from langgraph.errors import GraphInterrupt
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uuid
 
@@ -18,7 +19,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 graph = build_graph()
+
+# 静态资源：聊天 UI 和生成的游戏目录
+app.mount("/ui", StaticFiles(directory="web", html=True), name="ui")
+app.mount("/games", StaticFiles(directory="games"), name="games")
 
 
 class StartRequest(BaseModel):
@@ -30,41 +36,46 @@ class ResumeRequest(BaseModel):
     user_choice: str
 
 
+@app.get("/")
+def root():
+    return RedirectResponse(url="/ui/chat.html")
+
+
 # ===============================
 # 1️⃣ 启动流程
 # ===============================
 @app.post("/story/generate")
 def generate(data: StartRequest):
-    # print(data)
     thread_id = str(uuid.uuid4())
 
     result = graph.invoke(
         {
-            "thread_id": thread_id,  # 👈 放入 state
-            "requirement": data.requirement
+            "thread_id": thread_id,
+            "requirement": data.requirement,
         },
-        config={
-            "configurable": {
-                "thread_id": thread_id
-            }
-        }
+        config={"configurable": {"thread_id": thread_id}},
     )
-    print(result)
-    print(type(result))
-    # return {
-    #     "thread_id": thread_id,
-    #     "response": result
-    # }
-    # 如果中途有interrupt
+
+    # 如果中途有 interrupt
     if "__interrupt__" in result:
         interrupt_obj = result["__interrupt__"][0]
-
         return {
             "type": "interrupt",
             "thread_id": thread_id,
-            "data": interrupt_obj.value  # ✅ 用 .value
+            "data": interrupt_obj.value,
         }
 
+    # 兜底：没有 interrupt（理论上不会发生），直接返回当前结果
+    return {
+        "type": "code",
+        "thread_id": thread_id,
+        "data": {
+            "user_choice": result.get("user_choice"),
+            "selected_story": result.get("selected_story"),
+            "script": result.get("script"),
+            "story_js": result.get("story_js"),
+        },
+    }
 
 
 # ===============================
@@ -72,13 +83,19 @@ def generate(data: StartRequest):
 # ===============================
 @app.post("/story/choose")
 def choose(data: ResumeRequest):
-
     result = graph.invoke(
         {"user_choice": data.user_choice},
-        config={"configurable": {"thread_id": data.thread_id}}
+        config={"configurable": {"thread_id": data.thread_id}},
     )
 
-    # 只返回你需要的字段
+    if "__interrupt__" in result:
+        interrupt_obj = result["__interrupt__"][0]
+        return {
+            "type": "interrupt",
+            "thread_id": data.thread_id,
+            "data": interrupt_obj.value,
+        }
+
     return {
         "type": "code",
         "data": {
@@ -86,15 +103,17 @@ def choose(data: ResumeRequest):
             "selected_story": result.get("selected_story"),
             "script": result.get("script"),
             "story_js": result.get("story_js"),
-        }
+        },
     }
+
 
 if __name__ == "__main__":
     print("📝 API地址: http://localhost:8001")
+    print("🖥️ UI地址: http://localhost:8001/")
     print("📚 API文档: http://localhost:8001/docs")
     uvicorn.run(
-        "main:app",          # ⚠ 推荐用字符串方式
+        "main:app",
         host="0.0.0.0",
         port=8001,
-        reload=True          # 开发环境建议开启
+        reload=True,
     )

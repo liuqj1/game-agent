@@ -1,9 +1,9 @@
-import os
+﻿import os
 import shutil
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from agents import story_agent, script_agent, js_agent
-from langgraph.types import interrupt
+from langgraph.types import interrupt, Command
 from langgraph.checkpoint.memory import MemorySaver
 
 
@@ -28,44 +28,44 @@ class GameState(TypedDict, total=False):
 
 def user_select_node(state: GameState):
 
-    # 第一次执行时没有 user_choice → 中断
-    if "user_choice" not in state:
+    choice = state.get("user_choice")
+
+    # ????? / ?????????? choice ? ????? 3 ??????
+    if not choice:
         return interrupt({
             "stories": state["stories"],
-            "message": "请选择版本 1 / 2 / 3，或者点击重新生成。",
-            # "thread_id": thread_id
+            "message": "选择版本 1 / 2 / 3或者点击重新生成",
         })
 
-    choice = state["user_choice"]
-
     # =========================
-    # 1️⃣ 用户选择重新生成
+    # 1?? ????????
     # =========================
     if choice == "重新生成":
-        return {
-            # 清除旧选择
-            "user_choice": None,
-            # 跳回 story_agent
-            "__goto__": "story_agent"
-        }
+        # ?? Command ????? story_agent??????? user_select ?? interrupt
+        return Command(
+            goto="story_agent",
+            update={
+                "user_choice": None,
+                "selected_story": None,
+                "script": None,
+                "story_js": None,
+            },
+        )
 
     # =========================
-    # 2️⃣ 用户选择 1 / 2 / 3
+    # 2?? ???? 1 / 2 / 3
     # =========================
-    version = int(choice)
+    try:
+        version = int(str(choice).strip())
+    except ValueError:
+        version = 1
 
-    selected = next(
-        (s for s in state["stories"] if s["version"] == version),
-        None
-    )
+    selected = next((s for s in state["stories"] if s.get("version") == version), None)
 
-    # 理论上一定存在（因为前端限制了）
     if not selected:
         selected = state["stories"][0]
 
-    return {
-        "selected_story": selected
-    }
+    return {"selected_story": selected}
 
 # ===============================
 # 保存文件节点
