@@ -23,7 +23,6 @@ app.add_middleware(
 graph = build_graph()
 
 # 静态资源：聊天 UI 和生成的游戏目录
-app.mount("/ui", StaticFiles(directory="web", html=True), name="ui")
 app.mount("/games", StaticFiles(directory="games"), name="games")
 
 

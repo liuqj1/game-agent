@@ -1,0 +1,422 @@
+﻿<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文字剧情游戏</title>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      font-family: "Helvetica Neue", Helvetica, Arial, "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #game {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background-size: cover;
+      background-position: center;
+      transition: background 0.5s ease;
+    }
+
+    #cg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .character {
+      position: absolute;
+      bottom: 0;
+      height: auto;
+      max-height: 85%;
+      width: auto;
+      display: none;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0.45;
+      filter: brightness(0.7) saturate(0.85);
+      transition: opacity 0.25s ease, transform 0.25s ease, filter 0.25s ease;
+    }
+
+    .left { left: 6%; }
+    .center { left: 50%; transform: translateX(-50%); }
+    .right { right: 6%; }
+
+    /*说话角色轻微放大*/
+    .character.active {
+      opacity: 1;
+      filter: brightness(1) saturate(1);
+       transform:translateY(-2px) scale(1.03);
+    }
+
+    #dialogueBox {
+      position: absolute;
+      bottom: 26px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 85%;
+      max-width: 1200px;
+      background: rgba(15, 15, 20, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 26px 34px;
+      box-sizing: border-box;
+      z-index: 10;
+    }
+
+    #name {
+      font-weight: bold;
+      font-size: 24px;
+      color: #ebd59e;
+      margin-bottom: 10px;
+      letter-spacing: 1px;
+      text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+    }
+
+    #text {
+      min-height: 90px;
+      font-size: 20px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      color: #f5f5f5;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6);
+    }
+
+    #choices {
+      margin-top: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .choiceBtn {
+      display: block;
+      width: 80%;
+      max-width: 650px;
+      padding: 14px 18px;
+      background: rgba(255, 255,  255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 18px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .choiceBtn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.6);
+      transform: scale(1.02);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <img id="cg" src="" alt="cg" />
+
+    <img id="char_left" class="character left" src="" alt="left" />
+    <img id="char_center" class="character center" src="" alt="center" />
+    <img id="char_right" class="character right" src="" alt="right" />
+
+    <div id="dialogueBox">
+      <div id="name"></div>
+      <div id="text"></div>
+      <div id="choices"></div>
+    </div>
+  </div>
+
+  <script src="story.js"></script>
+  <script>
+    let current = 0;
+    let typing = false;
+    let typingTimer = null;
+    let currentTextFull = "";
+
+    const game = document.getElementById("game");
+    const cgImg = document.getElementById("cg");
+    const charLeft = document.getElementById("char_left");
+    const charCenter = document.getElementById("char_center");
+    const charRight = document.getElementById("char_right");
+
+    const nameBox = document.getElementById("name");
+    const textBox = document.getElementById("text");
+    const choicesBox = document.getElementById("choices");
+
+    const bgm = new Audio();
+    bgm.loop = true;
+    bgm.volume = 0.55;
+    let currentBgmSrc = "";
+
+    const sfx = new Audio();
+    sfx.loop = false;
+
+    function getStoryArray() {
+      // 兼容两种写法：
+      // 1) let route = {}; const story = [ ... ];
+      // 2) window.route = {}; window.story = [ ... ];
+      if (window.story && Array.isArray(window.story)) return window.story;
+      try {
+        if (typeof story !== "undefined" && Array.isArray(story)) return story;
+      } catch (_) {}
+      return null;
+    }
+
+    function typeText(text) {
+      clearInterval(typingTimer);
+      textBox.innerHTML = "";
+      currentTextFull = text;
+      typing = true;
+
+      let i = 0;
+      const speed = 18;
+
+      typingTimer = setInterval(() => {
+        textBox.innerHTML += text.charAt(i);
+        i++;
+        if (i >= text.length) {
+          clearInterval(typingTimer);
+          typing = false;
+        }
+      }, speed);
+    }
+
+    function normalizePos(pos) {
+      if (!pos) return "";
+      const p = String(pos).toLowerCase();
+      if (p === "l" || p === "left") return "left";
+      if (p === "c" || p === "center" || p === "middle") return "center";
+      if (p === "r" || p === "right") return "right";
+      return "";
+    }
+
+    function setActiveSpeaker(pos) {
+      const p = normalizePos(pos);
+      [charLeft, charCenter, charRight].forEach((el) => el.classList.remove("active"));
+      if (p === "left") charLeft.classList.add("active");
+      if (p === "center") charCenter.classList.add("active");
+      if (p === "right") charRight.classList.add("active");
+    }
+
+    function setChar(el, src) {
+      if (src) {
+        el.src = src;
+        el.style.display = "block";
+      } else {
+        el.style.display = "none";
+      }
+    }
+
+    function renderCharacters(node) {
+      // 向后兼容：
+      // - char: "img/xxx.png"（单人立绘，默认放右侧）
+      // - char: { left, center, right }
+      if (!node || !("char" in node)) {
+        setChar(charLeft, "");
+        setChar(charCenter, "");
+        setChar(charRight, "");
+        return;
+      }
+
+      if (typeof node.char === "string") {
+        setChar(charLeft, "");
+        setChar(charCenter, "");
+        setChar(charRight, node.char);
+        return;
+      }
+
+      if (typeof node.char === "object" && node.char) {
+        setChar(charLeft, node.char.left || "");
+        setChar(charCenter, node.char.center || "");
+        setChar(charRight, node.char.right || "");
+        return;
+      }
+
+      setChar(charLeft, "");
+      setChar(charCenter, "");
+      setChar(charRight, "");
+    }
+
+    function renderCg(node) {
+      if (!node || !node.cg) {
+        cgImg.style.display = "none";
+        return;
+      }
+      cgImg.src = node.cg;
+      cgImg.style.display = "block";
+    }
+
+    async function playBgm(src) {
+      if (!src) return;
+      if (src === "__stop__") {
+        currentBgmSrc = "";
+        bgm.pause();
+        bgm.currentTime = 0;
+        return;
+      }
+      if (src === currentBgmSrc) return;
+
+      currentBgmSrc = src;
+      try {
+        bgm.pause();
+        bgm.currentTime = 0;
+        bgm.src = src;
+        bgm.volume = 0;
+        await bgm.play();
+        let v = 0;
+        const target = 0.55;
+        const timer = setInterval(() => {
+          v += 0.05;
+          bgm.volume = Math.min(target, v);
+          if (v >= target) clearInterval(timer);
+        }, 80);
+      } catch (_) {
+        // 自动播放限制或加载失败：忽略即可
+      }
+    }
+
+    function playSfx(src) {
+      if (!src) return;
+      try {
+        sfx.pause();
+        sfx.currentTime = 0;
+        sfx.src = src;
+        sfx.play();
+      } catch (_) {}
+    }
+
+    function render() {
+      clearInterval(typingTimer);
+      typing = false;
+      choicesBox.innerHTML = "";
+
+      const storyArr = getStoryArray();
+      if (!storyArr) {
+        nameBox.innerText = "";
+        textBox.innerText = "story.js 未正确加载";
+        return;
+      }
+
+      const node = storyArr[current];
+      if (!node) return;
+
+      if (node.bg) {
+        game.style.backgroundImage = `url(${node.bg})`;
+      }
+
+      playBgm(node.bgm);
+      playSfx(node.sfx);
+
+      renderCg(node);
+      renderCharacters(node);
+
+      if (node.speaker) {
+        setActiveSpeaker(node.speaker);
+      } else {
+        const visible = [charLeft, charCenter, charRight].filter((el) => el.style.display !== "none");
+        if (visible.length === 1) {
+          [charLeft, charCenter, charRight].forEach((el) => el.classList.remove("active"));
+          visible[0].classList.add("active");
+        } else {
+          [charLeft, charCenter, charRight].forEach((el) => el.classList.remove("active"));
+        }
+      }
+
+      nameBox.innerText = node.name || "";
+
+      let content = node.text;
+      if (typeof content === "function") {
+        try {
+          content = content();
+        } catch (_) {
+          content = "";
+        }
+      }
+
+      if (content) {
+        typeText(String(content));
+      } else {
+        textBox.innerHTML = "";
+      }
+
+      if (node.choice) {
+        node.choice.forEach((option) => {
+          const btn = document.createElement("div");
+          btn.className = "choiceBtn";
+          btn.innerText = option.text;
+
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            if (option.action) option.action();
+            current = option.next;
+            render();
+          };
+
+          choicesBox.appendChild(btn);
+        });
+        return;
+      }
+
+      if (node.ending) {
+        const btn = document.createElement("div");
+        btn.className = "choiceBtn";
+        btn.innerText = "重新开始";
+
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          current = 0;
+          try {
+            if (typeof route !== "undefined" && route) {
+              for (let key in route) route[key] = undefined;
+            }
+          } catch (_) {}
+          render();
+        };
+
+        choicesBox.appendChild(btn);
+        return;
+      }
+    }
+
+    document.addEventListener("click", function (e) {
+      const storyArr = getStoryArray();
+      if (!storyArr) return;
+
+      const node = storyArr[current];
+      if (!node) return;
+
+      if (node.choice || node.ending) return;
+
+      if (typing) {
+        clearInterval(typingTimer);
+        typing = false;
+        textBox.innerHTML = currentTextFull;
+        return;
+      }
+
+      if (node.next != null) {
+        current = node.next;
+      } else {
+        current++;
+      }
+
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

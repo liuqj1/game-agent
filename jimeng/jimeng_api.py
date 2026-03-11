@@ -110,7 +110,7 @@ def signV4Request(access_key, secret_key, service, req_query, req_body):
 
 
 # 提交生成任务
-def submit_task(prompt_text, access_key, secret_key):
+def submit_task(prompt_text, access_key, secret_key, width, height):
 
     query_params = {
         'Action': 'CVSync2AsyncSubmitTask',
@@ -122,7 +122,8 @@ def submit_task(prompt_text, access_key, secret_key):
     body_params = {
         "req_key": "jimeng_t2i_v40",
         "prompt": prompt_text,
-        "size":"4194304",
+        "width": width,
+        "height": height,
         "return_url": True
     }
 
@@ -160,45 +161,43 @@ def query_task(task_id, access_key, secret_key):
 
 
 # 主函数
-def txt_to_image(prompt_text):
-
+def txt_to_image(prompt_text, save_dir="images",width=1024, height=1024):
 
     access_key = (os.getenv("JIMENG_ACCESS_KEY") or "").strip()
     secret_key = (os.getenv("JIMENG_SECRET_KEY") or "").strip()
+
+    # 创建保存目录
+    os.makedirs(save_dir, exist_ok=True)
+
     # 1 提交任务
-    task_id = submit_task(prompt_text, access_key, secret_key)
+    task_id = submit_task(prompt_text, access_key, secret_key,width ,height)
 
     print("Task ID:", task_id)
 
     # 2 轮询任务
-    for i in range(10):
+    for i in range(20):
 
         print("查询任务中...", i)
 
         resp = query_task(task_id, access_key, secret_key)
-        print(json.dumps(resp, indent=2, ensure_ascii=False))
         data = resp.get("data", {})
 
-        # 情况1：返回图片URL
-        if data.get("image_urls"):
-            image_url = data["image_urls"][0]
-            print("图片URL:", image_url)
-            return image_url
-
-        # 情况2：返回base64图片
+        # 返回base64图片
         if data.get("binary_data_base64"):
+
             img_base64 = data["binary_data_base64"][0]
 
             image_data = base64.b64decode(img_base64)
 
             file_name = f"jimeng_{int(time.time())}.png"
+            file_path = os.path.join(save_dir, file_name)
 
-            with open(file_name, "wb") as f:
+            with open(file_path, "wb") as f:
                 f.write(image_data)
 
-            print("图片已保存:", file_name)
+            print("图片已保存:", file_path)
 
-            return file_name
+            return file_path
 
         time.sleep(2)
 
@@ -207,7 +206,7 @@ def txt_to_image(prompt_text):
 
 if __name__ == "__main__":
 
-    url = txt_to_image('一张海报,上面文字写着:"新年快乐"大小1980*1020')
-
-    print("\n生成图片URL：")
-    print(url)
+    path = txt_to_image(
+        "一张海报，上面写着新年快乐",
+        save_dir="../output_images"
+    )
